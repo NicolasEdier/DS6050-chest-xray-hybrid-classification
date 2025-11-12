@@ -1,0 +1,32 @@
+# Data
+NIH_ChestXray/
+processed_data/
+*.csv
+*.npz
+
+# Checkpoints
+checkpoints/
+*.pth
+*.pt
+
+# Results
+results/
+visualizations/
+runs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# System
+.DS_Store
+Thumbs.db
