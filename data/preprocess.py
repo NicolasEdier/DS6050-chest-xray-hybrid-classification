@@ -8,9 +8,9 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from sklearn.model_selection import train_test_split
-import urllib.request
 import tarfile
 from tqdm import tqdm
+import requests
 
 class ChestXrayPreprocessor:
     """Download and preprocess NIH ChestX-ray14 dataset"""
@@ -57,6 +57,45 @@ class ChestXrayPreprocessor:
         # Metadata CSV link
         self.metadata_link = 'https://nihcc.box.com/shared/static/vfk49d74nhbxq3nqjg0900w5nvkorp5c.gz'
     
+    def download_file_with_progress(self, url, filepath):
+        """
+        Download file with progress bar
+        
+        Args:
+            url: URL to download from
+            filepath: Local path to save file
+            
+        Returns:
+            bool: True if successful
+        """
+        try:
+            response = requests.get(url, stream=True, timeout=30)
+            response.raise_for_status()
+            
+            total_size = int(response.headers.get('content-length', 0))
+            
+            with open(filepath, 'wb') as f:
+                with tqdm(
+                    total=total_size,
+                    unit='B',
+                    unit_scale=True,
+                    unit_divisor=1024,
+                    desc=filepath.name,
+                    ncols=80
+                ) as pbar:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            pbar.update(len(chunk))
+            
+            return True
+            
+        except Exception as e:
+            print(f"  Error: {e}")
+            if filepath.exists():
+                filepath.unlink()
+            return False
+    
     def download_images(self, skip_if_exists=True):
         """
         Download all image tar.gz files
@@ -77,16 +116,19 @@ class ChestXrayPreprocessor:
             
             # Skip if already exists
             if skip_if_exists and filepath.exists():
-                print(f"✓ {filename} already exists, skipping...")
+                size_gb = filepath.stat().st_size / 1e9
+                print(f"✓ {filename} already exists ({size_gb:.2f} GB), skipping...")
                 continue
             
-            print(f"Downloading {filename} ({idx}/{len(self.image_links)})...")
-            try:
-                urllib.request.urlretrieve(link, filepath)
-                print(f"  ✓ Downloaded {filename}")
-            except Exception as e:
-                print(f"  ✗ Error downloading {filename}: {e}")
-                continue
+            print(f"\n[{idx}/{len(self.image_links)}] Downloading {filename}...")
+            
+            success = self.download_file_with_progress(link, filepath)
+            
+            if success:
+                size_gb = filepath.stat().st_size / 1e9
+                print(f"✓ Downloaded {filename} ({size_gb:.2f} GB)")
+            else:
+                print(f"✗ Failed to download {filename}")
         
         print("\n✓ Image download complete!")
     
@@ -106,7 +148,7 @@ class ChestXrayPreprocessor:
             filepath = self.data_dir / filename
             
             if not filepath.exists():
-                print(f"⚠ {filename} not found, skipping extraction...")
+                print(f"WARNING: {filename} not found, skipping extraction...")
                 continue
             
             # Check if already extracted
@@ -118,7 +160,12 @@ class ChestXrayPreprocessor:
             print(f"Extracting {filename}...")
             try:
                 with tarfile.open(filepath, 'r:gz') as tar:
-                    tar.extractall(path=self.data_dir)
+                    # Get total members for progress
+                    members = tar.getmembers()
+                    with tqdm(total=len(members), desc=f"Extracting {filename}", ncols=80) as pbar:
+                        for member in members:
+                            tar.extract(member, path=self.data_dir)
+                            pbar.update(1)
                 print(f"  ✓ Extracted {filename}")
             except Exception as e:
                 print(f"  ✗ Error extracting {filename}: {e}")
@@ -143,11 +190,13 @@ class ChestXrayPreprocessor:
         
         print(f"Downloading metadata CSV...")
         try:
-            # Try direct download
-            urllib.request.urlretrieve(metadata_url, metadata_file)
-            print("✓ Metadata downloaded")
+            success = self.download_file_with_progress(metadata_url, metadata_file)
+            if success:
+                print("✓ Metadata downloaded")
+            else:
+                raise Exception("Download failed")
         except:
-            print("⚠ Could not download metadata automatically")
+            print("WARNING: Could not download metadata automatically")
             print("Please download manually from:")
             print("https://nihcc.box.com/v/ChestXray-NIHCC/file/220660789610")
             print(f"Save as: {metadata_file}")
@@ -160,7 +209,7 @@ class ChestXrayPreprocessor:
         metadata_path = self.data_dir / 'Data_Entry_2017.csv'
         
         if not metadata_path.exists():
-            print("⚠ Metadata CSV not found!")
+            print("WARNING: Metadata CSV not found!")
             print("Please download Data_Entry_2017.csv from:")
             print("https://nihcc.box.com/v/ChestXray-NIHCC")
             print(f"And place it in: {self.data_dir}")
@@ -207,7 +256,7 @@ class ChestXrayPreprocessor:
         print(f"Metadata entries with existing images: {len(df_filtered)}/{len(df)}")
         
         if len(df_filtered) == 0:
-            print("\n⚠ WARNING: No images found!")
+            print("\nWARNING: No images found!")
             print("Make sure images are extracted to:")
             print(f"  {self.data_dir}/images_01/images/")
             print(f"  {self.data_dir}/images_02/images/")
@@ -258,7 +307,7 @@ class ChestXrayPreprocessor:
             
             # Sample
             if len(disease_df) < n_samples:
-                print(f"⚠ {disease}: only {len(disease_df)} available, requested {n_samples}")
+                print(f"WARNING: {disease}: only {len(disease_df)} available, requested {n_samples}")
                 sampled = disease_df
             else:
                 sampled = disease_df.sample(n=n_samples, random_state=self.random_seed)
@@ -354,7 +403,7 @@ def main():
     
     # Step 1: Download images (this will take a while!)
     print("\nStep 1: Download images")
-    print("⚠ This will download ~45GB of data. Continue? (y/n): ", end='')
+    print("WARNING: This will download ~45GB of data. Continue? (y/n): ", end='')
     response = input().lower()
     
     if response == 'y':
