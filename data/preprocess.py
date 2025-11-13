@@ -174,35 +174,80 @@ class ChestXrayPreprocessor:
         print("\n✓ Extraction complete!")
     
     def download_metadata(self):
-        """Download metadata CSV file"""
+        """Download metadata CSV file with user prompt"""
         print("\n" + "="*70)
-        print("DOWNLOADING METADATA")
+        print("DOWNLOADING METADATA CSV")
         print("="*70)
         
         metadata_file = self.data_dir / 'Data_Entry_2017.csv'
         
         if metadata_file.exists():
-            print("✓ Metadata file already exists")
+            print(f"✓ Metadata file already exists at {metadata_file}")
             return metadata_file
         
-        # The metadata CSV is available at a direct link
-        metadata_url = 'https://nihcc.box.com/shared/static/e6w2b6h3fj5sj4xh8w8m9e2c6v2r8r5b.csv'
+        print("\nThe metadata CSV file contains labels for all images.")
+        print("File size: ~40 MB")
+        print("\nDownload metadata CSV? (y/n): ", end='')
         
-        print(f"Downloading metadata CSV...")
-        try:
-            success = self.download_file_with_progress(metadata_url, metadata_file)
-            if success:
-                print("✓ Metadata downloaded")
-            else:
-                raise Exception("Download failed")
-        except:
-            print("WARNING: Could not download metadata automatically")
-            print("Please download manually from:")
-            print("https://nihcc.box.com/v/ChestXray-NIHCC/file/220660789610")
+        response = input().lower().strip()
+        
+        if response != 'y':
+            print("\nSkipping metadata download.")
+            print("You can download it manually from:")
+            print("https://nihcc.box.com/v/ChestXray-NIHCC")
             print(f"Save as: {metadata_file}")
-            raise FileNotFoundError("Metadata file not found. Please download manually.")
+            return None
         
-        return metadata_file
+        # Try multiple download URLs for the metadata
+        metadata_urls = [
+            # Direct download link (most reliable)
+            'https://nihcc.app.box.com/index.php?rm=box_download_shared_file&shared_name=vfk49d74nhbxq3nqjg0900w5nvkorp5c&file_id=f_220660789610',
+            # Alternative links
+            'https://academictorrents.com/download/557481faacd824c83fbf57dcf7b6da9383b3235a.torrent',
+        ]
+        
+        print("\nAttempting to download Data_Entry_2017.csv...")
+        
+        for url_idx, metadata_url in enumerate(metadata_urls, 1):
+            try:
+                print(f"\nTrying download method {url_idx}...")
+                success = self.download_file_with_progress(metadata_url, metadata_file)
+                
+                if success and metadata_file.exists():
+                    # Verify it's a valid CSV
+                    file_size = metadata_file.stat().st_size
+                    if file_size > 100000:  # At least 100KB
+                        print(f"✓ Metadata downloaded successfully ({file_size / 1e6:.1f} MB)")
+                        
+                        # Quick validation - check if it has the right columns
+                        try:
+                            df_test = pd.read_csv(metadata_file, nrows=5)
+                            if 'Image Index' in df_test.columns and 'Finding Labels' in df_test.columns:
+                                print("✓ Metadata file validated")
+                                return metadata_file
+                            else:
+                                print("WARNING: Downloaded file doesn't have expected columns")
+                                metadata_file.unlink()
+                        except:
+                            print("WARNING: Downloaded file is not a valid CSV")
+                            metadata_file.unlink()
+                            continue
+                
+            except Exception as e:
+                print(f"  Failed: {e}")
+                if metadata_file.exists():
+                    metadata_file.unlink()
+                continue
+        
+        print("\n✗ Automatic metadata download failed.")
+        print("\nPlease download manually:")
+        print("1. Go to: https://nihcc.box.com/v/ChestXray-NIHCC")
+        print("2. Look for 'Data_Entry_2017.csv' in the file list")
+        print("3. Download it")
+        print(f"4. Save it to: {metadata_file}")
+        print("\nThen run this script again.")
+        
+        return None
     
     def load_metadata(self):
         """Load and parse metadata CSV"""
@@ -413,8 +458,14 @@ def main():
         print("Skipping download. Make sure images are already downloaded!")
     
     # Step 2: Load metadata
-    print("\nStep 2: Load metadata")
+    print("\nStep 2: Download and load metadata")
     try:
+        metadata_path = preprocessor.download_metadata()
+        if metadata_path is None:
+            print("\n✗ Cannot proceed without metadata file.")
+            print("Please download it manually and re-run the script.")
+            return
+        
         df = preprocessor.load_metadata()
     except FileNotFoundError as e:
         print(f"\n✗ Error: {e}")
