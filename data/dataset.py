@@ -58,8 +58,11 @@ class ChestXrayDataset(Dataset):
         # Get image name and path
         img_name = self.df.iloc[idx]['Image Index']
         
-        # Images are organized in folders like images_01/images/00000001_000.png
-        # Find which folder contains the image
+        # Try multiple possible locations:
+        # 1. images_01/images/, images_02/images/, etc.
+        # 2. Single images/ folder
+        # 3. Direct in image_dir
+        
         img_path = None
         
         # Check all images_XX folders
@@ -71,13 +74,29 @@ class ChestXrayDataset(Dataset):
                 img_path = potential_path
                 break
         
-        # Fallback: try direct path
+        # Check single images/ folder
         if img_path is None:
-            img_path = self.image_dir / img_name
+            single_images_dir = self.image_dir / 'images'
+            if single_images_dir.exists():
+                potential_path = single_images_dir / img_name
+                if potential_path.exists():
+                    img_path = potential_path
+        
+        # Check direct path
+        if img_path is None:
+            potential_path = self.image_dir / img_name
+            if potential_path.exists():
+                img_path = potential_path
         
         # Final check
-        if not img_path.exists():
-            raise FileNotFoundError(f"Image not found: {img_name}\nSearched in: {self.image_dir}")
+        if img_path is None or not img_path.exists():
+            raise FileNotFoundError(
+                f"Image not found: {img_name}\n"
+                f"Searched in:\n"
+                f"  {self.image_dir}/images_*/images/\n"
+                f"  {self.image_dir}/images/\n"
+                f"  {self.image_dir}/"
+            )
         
         # Load image
         image = Image.open(img_path).convert('RGB')

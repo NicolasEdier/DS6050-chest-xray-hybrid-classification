@@ -286,12 +286,28 @@ class ChestXrayPreprocessor:
         """Verify that image files exist for the metadata"""
         print("\nVerifying image files...")
         
-        # Get all image files
+        # Get all image files - check multiple possible locations
         all_images = []
+        
+        # Pattern 1: images_01/images/, images_02/images/, etc.
         for images_dir in self.data_dir.glob('images_*'):
             if images_dir.is_dir():
                 image_files = list(images_dir.glob('images/*.png'))
                 all_images.extend([f.name for f in image_files])
+        
+        # Pattern 2: Single images/ folder (all extracted to one place)
+        single_images_dir = self.data_dir / 'images'
+        if single_images_dir.exists() and single_images_dir.is_dir():
+            image_files = list(single_images_dir.glob('*.png'))
+            all_images.extend([f.name for f in image_files])
+            print(f"Found images in: {single_images_dir}")
+        
+        # Pattern 3: Direct in data_dir
+        direct_images = list(self.data_dir.glob('*.png'))
+        all_images.extend([f.name for f in direct_images])
+        
+        # Remove duplicates
+        all_images = list(set(all_images))
         
         print(f"Found {len(all_images)} image files on disk")
         
@@ -302,10 +318,12 @@ class ChestXrayPreprocessor:
         
         if len(df_filtered) == 0:
             print("\nWARNING: No images found!")
-            print("Make sure images are extracted to:")
+            print("Checked locations:")
             print(f"  {self.data_dir}/images_01/images/")
             print(f"  {self.data_dir}/images_02/images/")
-            print("  etc.")
+            print(f"  {self.data_dir}/images/")
+            print(f"  {self.data_dir}/*.png")
+            print("\nPlease verify your image extraction.")
             raise FileNotFoundError("No image files found!")
         
         return df_filtered
