@@ -11,10 +11,11 @@ from pathlib import Path
 import json
 from tqdm import tqdm
 import numpy as np
-
-# Add parent directory to path
 import sys
-sys.path.append('..')
+import os
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from data.dataset import get_dataloaders
 from models.baseline import get_model
