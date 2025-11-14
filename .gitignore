@@ -1,5 +1,6 @@
 # Data
-NIH_ChestXray/
+NIH_ChestXray/images*/
+NIH_ChestXray/*.tar.gz
 processed_data/
 *.csv
 *.npz
