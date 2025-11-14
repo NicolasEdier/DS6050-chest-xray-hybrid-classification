@@ -45,7 +45,7 @@ This project implements and evaluates hybrid CNN-Transformer architectures for m
 ```bash
 # Clone repository
 git clone 
-cd chest-xray-hybrid
+cd DS6050-chest-xray-hybrid-classification
 
 # Create virtual environment
 python -m venv venv
