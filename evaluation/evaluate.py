@@ -204,7 +204,7 @@ class ModelEvaluator:
 
 def load_checkpoint(checkpoint_path, model):
     """Load model from checkpoint"""
-    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
     print(f"Best AUROC: {checkpoint['best_auroc']:.4f}")
