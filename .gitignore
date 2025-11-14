@@ -4,6 +4,9 @@ processed_data/
 *.csv
 *.npz
 
+# Exceptions - keep these files
+!NIH_ChestXray/Data_Entry_2017.csv
+
 # Checkpoints
 checkpoints/
 *.pth
