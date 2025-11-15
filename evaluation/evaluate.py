@@ -141,7 +141,7 @@ class ModelEvaluator:
         
         return thresholds
     
-    def analyze_errors(self, predictions, save_dir=None):
+    def analyze_errors(self, predictions, model_name, save_dir=None):
         """
         Analyze false positives and false negatives
         
@@ -195,7 +195,7 @@ class ModelEvaluator:
             save_dir = Path(save_dir)
             save_dir.mkdir(parents=True, exist_ok=True)
             
-            with open(save_dir / 'error_analysis.json', 'w') as f:
+            with open(save_dir / f'{model_name}_error_analysis.json', 'w') as f:
                 json.dump(error_analysis, f, indent=2)
             print(f"\nError analysis saved to {save_dir / 'error_analysis.json'}")
         
@@ -204,7 +204,7 @@ class ModelEvaluator:
 
 def load_checkpoint(checkpoint_path, model):
     """Load model from checkpoint"""
-    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
     print(f"Best AUROC: {checkpoint['best_auroc']:.4f}")
@@ -270,7 +270,7 @@ def evaluate_model(
     optimal_thresholds = evaluator.find_optimal_thresholds()
     
     # Analyze errors
-    error_analysis = evaluator.analyze_errors(predictions, save_dir=save_dir)
+    error_analysis = evaluator.analyze_errors(predictions, model_name, save_dir=save_dir)
     
     # Save results
     results = {
@@ -288,12 +288,12 @@ def evaluate_model(
         'optimal_thresholds': optimal_thresholds.tolist()
     }
     
-    with open(save_dir / 'evaluation_results.json', 'w') as f:
+    with open(save_dir / f'{model_name}_evaluation_results.json', 'w') as f:
         json.dump(results, f, indent=2)
     
     # Save predictions
     np.savez(
-        save_dir / 'predictions.npz',
+        save_dir / f"{model_name}_predictions.npz",
         logits=predictions['logits'],
         labels=predictions['labels'],
         probs=predictions['probs']
