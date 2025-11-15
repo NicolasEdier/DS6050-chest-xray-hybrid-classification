@@ -44,7 +44,7 @@ This project implements and evaluates hybrid CNN-Transformer architectures for m
 
 ```bash
 # Clone repository
-git clone 
+git clone https://github.com/NicolasEdier/DS6050-chest-xray-hybrid-classification.git 
 cd DS6050-chest-xray-hybrid-classification
 
 # Create virtual environment
@@ -109,7 +109,7 @@ python training/train.py \
     --data_dir ./processed_data \
     --image_dir ./NIH_ChestXray \
     --batch_size 16 \
-    --epochs 100 \
+    --epochs 25 \
     --lr 1e-4
 ```
 
@@ -119,7 +119,7 @@ Train DenseNet-121:
 python training/train.py \
     --model densenet121 \
     --batch_size 16 \
-    --epochs 100
+    --epochs 25
 ```
 
 ### 3. Training Hybrid Model
@@ -128,7 +128,7 @@ python training/train.py \
 python training/train_hybrid.py \
     --model hybrid_full \
     --batch_size 8 \
-    --epochs 100 \
+    --epochs 25 \
     --use_focal \
     --use_correlation
 ```
@@ -212,39 +212,87 @@ python evaluation/visualize.py \
 
 ## Experimental Results
 
-### Baseline Performance (Preliminary)
+### Baseline Performance
 
-| Model | AUROC | AUPRC | F1 | Parameters |
-|-------|-------|-------|----|----|
-| ResNet-50 | 0.780 | 0.748 | 0.692 | 23.5M |
-| DenseNet-121 | 0.765 | 0.732 | 0.678 | 7.0M |
+| Model | AUROC | AUPRC | F1 | Parameters | Training Time |
+|-------|-------|-------|----|----|---------------|
+| ResNet-50 | 0.780 | 0.370 | 0.179 | 23.5M | ~50 min (25 epochs) |
+| DenseNet-121 | 0.777 | 0.361 | 0.137 | 7.0M | ~50 min (25 epochs) |
+| ResNet-50 Multiscale | 0.779 | 0.364 | 0.152 | 23.5M | ~50 min (25 epochs) |
 
-### Per-Disease AUROC (ResNet-50)
+All models trained for 25 epochs on 10,318 training images, validated on 1,481 images, and evaluated on 2,998 test images.
 
-| Disease | AUROC |
-|---------|-------|
-| Edema | 0.861 |
-| Cardiomegaly | 0.842 |
-| Pneumothorax | 0.835 |
-| Effusion | 0.818 |
-| Emphysema | 0.798 |
-| Atelectasis | 0.795 |
-| Mass | 0.785 |
-| Consolidation | 0.771 |
-| Pleural Thickening | 0.762 |
-| Nodule | 0.756 |
-| Fibrosis | 0.745 |
-| Infiltration | 0.732 |
-| Pneumonia | 0.724 |
-| Hernia | 0.698 |
+### Model Comparison
+
+**ResNet-50** achieved the highest average AUROC (0.780) and best F1-score (0.179), making it our strongest baseline. **DenseNet-121**, while having fewer parameters (7.0M vs 23.5M), achieved comparable AUROC (0.777) with faster inference. **ResNet-50 Multiscale** showed similar performance (0.779) with improved feature extraction at multiple scales.
+
+### Per-Disease AUROC Comparison
+
+| Disease | ResNet-50 | DenseNet-121 | ResNet-50 Multiscale | Best Model |
+|---------|-----------|--------------|----------------------|------------|
+| Hernia | **0.925** | 0.883 | 0.925 | ResNet-50/Multiscale |
+| Emphysema | 0.906 | 0.910 | **0.919** | Multiscale |
+| Edema | 0.855 | **0.858** | 0.858 | DenseNet-121 |
+| Pneumothorax | 0.852 | 0.849 | **0.850** | ResNet-50 |
+| Cardiomegaly | **0.844** | 0.850 | 0.837 | DenseNet-121 |
+| Effusion | **0.817** | 0.791 | 0.803 | ResNet-50 |
+| Atelectasis | **0.751** | 0.729 | 0.740 | ResNet-50 |
+| Mass | **0.758** | 0.728 | 0.716 | ResNet-50 |
+| Pleural Thickening | 0.744 | 0.762 | **0.758** | DenseNet-121 |
+| Fibrosis | **0.748** | 0.777 | 0.758 | DenseNet-121 |
+| Consolidation | 0.718 | **0.719** | 0.713 | DenseNet-121 |
+| Infiltration | **0.672** | 0.671 | 0.673 | Multiscale |
+| Nodule | **0.680** | 0.667 | 0.665 | ResNet-50 |
+| Pneumonia | **0.646** | 0.684 | 0.697 | Multiscale |
+| **Average** | **0.780** | 0.777 | 0.779 | ResNet-50 |
+
+### Key Findings
+
+**Strongest Performance:**
+- **Hernia** (0.925): Excellent detection with distinctive radiographic features
+- **Emphysema** (0.919): Strong performance across all models
+- **Edema** (0.858): Consistent high accuracy for fluid detection
+- **Pneumothorax** (0.852): Reliable identification of collapsed lung
+
+**Challenging Cases:**
+- **Pneumonia** (0.646-0.697): Most difficult class; overlapping features with other infiltrative diseases
+- **Nodule** (0.665-0.680): Small lesions difficult to detect at 512×512 resolution
+- **Infiltration** (0.672-0.673): Broad category with heterogeneous presentations
+
+**Model-Specific Strengths:**
+- **ResNet-50**: Best overall performance (0.780), particularly strong for rare diseases (Hernia, Mass)
+- **DenseNet-121**: Most efficient (7.0M params), excellent for Edema and Fibrosis
+- **ResNet-50 Multiscale**: Best for Emphysema and Pneumonia; benefits from multi-scale feature extraction
+
+### Error Analysis
+
+Common failure modes identified across models:
+- **False Negatives**: Subtle or early-stage pathologies (small nodules, minimal infiltrates)
+- **False Positives**: Co-occurring diseases with similar radiographic features (e.g., Infiltration confused with Pneumonia)
+- **Class Imbalance**: Rare diseases (Hernia: 50 test samples) show higher variance despite good AUROC
+
+### Comparison to Literature
+
+Our ResNet-50 baseline (AUROC 0.780) is competitive with published results on NIH ChestX-ray14:
+- Original ChestX-ray14 paper (Wang et al., 2017): AUROC 0.745
+- CheXNet (Rajpurkar et al., 2017): AUROC 0.841 (trained on full 112K images)
+- Our results with 10,318 training images demonstrate effective learning on a stratified subset
 
 ## Ablation Studies
 
-Planned ablation experiments:
-1. **Fusion Strategies**: Concatenation vs. attention-based fusion
-2. **Transformer Variants**: ViT-Small vs. Swin Transformer
-3. **Loss Components**: BCE only vs. with focal loss vs. full combined loss
-4. **Multi-Scale Features**: Single-scale vs. multi-scale CNN features
+### Completed Experiments
+
+1. **Architecture Comparison**: ResNet-50 vs. DenseNet-121 vs. ResNet-50 Multiscale
+   - ResNet-50 achieved best overall performance (AUROC 0.780)
+   - Multi-scale features improved performance on texture-based diseases (Emphysema, Pneumonia)
+   - DenseNet-121 more parameter-efficient with comparable results
+
+### Planned for Milestone III
+
+2. **Hybrid CNN-Transformer Architecture**: Integration of Swin Transformer with ResNet-50
+3. **Fusion Strategies**: Concatenation vs. adaptive attention-based fusion
+4. **Loss Components**: Weighted BCE vs. Focal Loss vs. Correlation-aware loss
+5. **Advanced Attention Mechanisms**: Disease-specific gating and multi-head attention
 
 ## Computational Requirements
 
