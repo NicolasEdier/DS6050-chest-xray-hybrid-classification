@@ -99,6 +99,8 @@ This will:
 - Compute class weights for training
 - Save processed data to `./processed_data/`
 
+Note that downloading the full dataset may take up to an hour.
+
 ### 2. Training Baseline Models
 
 Train ResNet-50 baseline:
@@ -132,6 +134,8 @@ python training/train_hybrid.py \
     --use_focal \
     --use_correlation
 ```
+
+Note that training one model for 25 epochs took us about 50 minutes using an A100 gpu via Google Colab.
 
 ### 4. Model Evaluation
 
@@ -283,16 +287,28 @@ Our ResNet-50 baseline (AUROC 0.780) is competitive with published results on NI
 ### Completed Experiments
 
 1. **Architecture Comparison**: ResNet-50 vs. DenseNet-121 vs. ResNet-50 Multiscale
-   - ResNet-50 achieved best overall performance (AUROC 0.780)
-   - Multi-scale features improved performance on texture-based diseases (Emphysema, Pneumonia)
-   - DenseNet-121 more parameter-efficient with comparable results
 
-### Planned for Milestone III
+   * ResNet-50 achieved the best overall performance (AUROC 0.780)
+   * Multi-scale features improved performance on texture-dependent diseases (e.g., Emphysema, Pneumonia)
+   * DenseNet-121 provided competitive results with fewer parameters
 
-2. **Hybrid CNN-Transformer Architecture**: Integration of Swin Transformer with ResNet-50
-3. **Fusion Strategies**: Concatenation vs. adaptive attention-based fusion
-4. **Loss Components**: Weighted BCE vs. Focal Loss vs. Correlation-aware loss
-5. **Advanced Attention Mechanisms**: Disease-specific gating and multi-head attention
+2. **Attention Mechanisms**
+   Evaluate the isolated and combined effect of feature recalibration modules:
+
+   * Channel attention only
+   * Spatial attention only
+   * Combined channel + spatial attention
+
+3. **Adaptive Fusion Mechanisms**
+   Replace simple channel-wise concatenation with learnable fusion:
+
+   * Shared global gating mechanism
+   * Per-class gating parameters for label-specific fusion
+
+4. **Class-Specific Output Modeling**
+   Compare the baseline shared classification head with:
+
+   * Per-class classification heads to measure label-wise modeling benefits
 
 ## Computational Requirements
 
