@@ -1,7 +1,8 @@
 {
   "densenet121": {
     "model": "densenet121",
-    "checkpoint": "checkpoints\\densenet121\\best_model.pth",
+    "checkpoint": "C:\\Users\\jburk\\Documents\\Grad School\\Deep Learning\\DS6050-chest-xray-hybrid-classification\\checkpoints\\densenet121\\best_model.pth",
+    "training_history_path": "C:\\Users\\jburk\\Documents\\Grad School\\Deep Learning\\DS6050-chest-xray-hybrid-classification\\checkpoints\\densenet121\\training_history.json",
     "metrics": {
       "auroc_mean": 0.777039455461297,
       "auprc_mean": 0.36112750943053884,
@@ -343,7 +344,8 @@
   },
   "resnet50": {
     "model": "resnet50",
-    "checkpoint": "checkpoints\\resnet50\\best_model.pth",
+    "checkpoint": "C:\\Users\\jburk\\Documents\\Grad School\\Deep Learning\\DS6050-chest-xray-hybrid-classification\\checkpoints\\resnet50\\best_model.pth",
+    "training_history_path": "C:\\Users\\jburk\\Documents\\Grad School\\Deep Learning\\DS6050-chest-xray-hybrid-classification\\checkpoints\\resnet50\\training_history.json",
     "metrics": {
       "auroc_mean": 0.7797349277950509,
       "auprc_mean": 0.36980151933147704,
@@ -713,7 +715,8 @@
   },
   "resnet50_multiscale": {
     "model": "resnet50_multiscale",
-    "checkpoint": "checkpoints\\resnet50_multiscale\\best_model.pth",
+    "checkpoint": "C:\\Users\\jburk\\Documents\\Grad School\\Deep Learning\\DS6050-chest-xray-hybrid-classification\\checkpoints\\resnet50_multiscale\\best_model.pth",
+    "training_history_path": "C:\\Users\\jburk\\Documents\\Grad School\\Deep Learning\\DS6050-chest-xray-hybrid-classification\\checkpoints\\resnet50_multiscale\\training_history.json",
     "metrics": {
       "auroc_mean": 0.7794610699026974,
       "auprc_mean": 0.36439839803203783,

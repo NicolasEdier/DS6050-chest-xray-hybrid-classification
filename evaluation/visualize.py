@@ -290,185 +290,185 @@ def visualize_attention_maps(
     print(f"Saved {images_shown} attention maps to {save_dir}")
 
 
-def plot_training_history(history_file, save_dir='./plots'):
-    """
-    Plot training history curves
-    
-    Args:
-        history_file: Path to training_history.json
-        save_dir: Directory to save plots
-    """
+def plot_training_history(history_file, save_dir='./plots', model_name='model'):
     import json
-    
+
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Load history
+
+    # Load training history
     with open(history_file, 'r') as f:
         history = json.load(f)
-    
+
     epochs = range(1, len(history['train_losses']) + 1)
-    
-    # Plot losses
+
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
-    
+
+    # ----- Training & Validation Loss -----
     ax1.plot(epochs, history['train_losses'], 'b-', label='Train Loss')
-    ax1.plot(epochs, history['val_losses'], 'r-', label='Val Loss')
+    ax1.plot(epochs, history['val_losses'], 'r-', label='Validation Loss')
     ax1.set_xlabel('Epoch')
     ax1.set_ylabel('Loss')
-    ax1.set_title('Training and Validation Loss')
-    ax1.legend()
+    ax1.set_title(f'{model_name} — Training & Validation Loss')
     ax1.grid(alpha=0.3)
-    
+    ax1.legend()   # FIXED — legend now shows both lines
+
+    # ----- Validation AUROC -----
     ax2.plot(epochs, history['val_aurocs'], 'g-', label='Val AUROC')
-    ax2.axhline(y=history['best_auroc'], color='r', linestyle='--', 
-                label=f'Best AUROC: {history["best_auroc"]:.4f}')
+    ax2.axhline(history['best_auroc'], color='r', linestyle='--',
+                label=f'Best AUROC = {history["best_auroc"]:.4f}')  # FIXED
     ax2.set_xlabel('Epoch')
     ax2.set_ylabel('AUROC')
-    ax2.set_title('Validation AUROC')
-    ax2.legend()
+    ax2.set_title(f'{model_name} — Validation AUROC')
     ax2.grid(alpha=0.3)
-    
+    ax2.legend()  # FIXED — legend includes both AUROC curve and best line
+
     plt.tight_layout()
-    plt.savefig(save_dir / 'training_history.png', dpi=150, bbox_inches='tight')
+
+    out_path = save_dir / f'{model_name}_training_history.png'
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
     plt.close()
-    
-    print(f"Training history plot saved to {save_dir}")
+
+    print(f"Training history plot saved to {out_path}")
 
 
-def plot_confusion_matrices(predictions_file, disease_classes, save_dir='./plots'):
-    """
-    Plot confusion matrices for each disease
-    
-    Args:
-        predictions_file: Path to predictions.npz
-        disease_classes: List of disease names
-        save_dir: Directory to save plots
-    """
+
+
+def plot_confusion_matrices(predictions_file, disease_classes, save_dir='./plots', model_name='model'):
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Load predictions
+
     data = np.load(predictions_file)
     probs = data['probs']
     labels = data['labels']
-    
-    # Binary predictions
     preds = (probs > 0.5).astype(int)
-    
-    # Plot confusion matrix for each disease
-    num_diseases = len(disease_classes)
+
     fig, axes = plt.subplots(4, 4, figsize=(16, 16))
     axes = axes.flatten()
-    
-    for i in range(min(num_diseases, 16)):
-        # Compute confusion matrix
+
+    for i in range(min(len(disease_classes), 16)):
         from sklearn.metrics import confusion_matrix
         cm = confusion_matrix(labels[:, i], preds[:, i])
-        
-        # Normalize
-        cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-        
-        # Plot
-        sns.heatmap(cm_normalized, annot=True, fmt='.2f', cmap='Blues',
-                   xticklabels=['Negative', 'Positive'],
-                   yticklabels=['Negative', 'Positive'],
-                   ax=axes[i], cbar=False)
-        axes[i].set_title(disease_classes[i])
-        axes[i].set_xlabel('Predicted')
-        axes[i].set_ylabel('Actual')
-    
-    # Hide extra subplots
-    for i in range(num_diseases, 16):
-        axes[i].axis('off')
-    
-    plt.suptitle('Confusion Matrices (Normalized)', fontsize=16)
+        cm_norm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+
+        sns.heatmap(cm_norm, annot=True, fmt='.2f',
+                    cmap='Blues', ax=axes[i],
+                    xticklabels=['Neg', 'Pos'],
+                    yticklabels=['Neg', 'Pos'])
+
+        axes[i].set_title(f'{model_name} — {disease_classes[i]}')
+
+    plt.suptitle(f'{model_name} — Confusion Matrices', fontsize=18)
     plt.tight_layout()
-    plt.savefig(save_dir / 'confusion_matrices.png', dpi=150, bbox_inches='tight')
+
+    out_path = save_dir / f'{model_name}_confusion_matrices.png'
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
     plt.close()
-    
-    print(f"Confusion matrices saved to {save_dir}")
+
+    print(f"Confusion matrices saved to {out_path}")
 
 
-def plot_roc_curves(predictions_file, disease_classes, save_dir='./plots'):
-    """
-    Plot ROC curves for all diseases
-    
-    Args:
-        predictions_file: Path to predictions.npz
-        disease_classes: List of disease names
-        save_dir: Directory to save plots
-    """
+
+def plot_roc_curves(predictions_file, disease_classes, save_dir='./plots', model_name='model'):
     from sklearn.metrics import roc_curve, auc
-    
+
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Load predictions
     data = np.load(predictions_file)
     probs = data['probs']
     labels = data['labels']
-    
-    # Plot ROC curves
+
+    # Make grid
     fig, axes = plt.subplots(4, 4, figsize=(20, 20))
     axes = axes.flatten()
-    
+
     for i, disease in enumerate(disease_classes):
-        # Compute ROC curve
         fpr, tpr, _ = roc_curve(labels[:, i], probs[:, i])
         roc_auc = auc(fpr, tpr)
-        
-        # Plot
-        axes[i].plot(fpr, tpr, 'b-', linewidth=2,
-                    label=f'AUC = {roc_auc:.3f}')
-        axes[i].plot([0, 1], [0, 1], 'k--', linewidth=1)
-        axes[i].set_xlim([0.0, 1.0])
-        axes[i].set_ylim([0.0, 1.05])
-        axes[i].set_xlabel('False Positive Rate')
-        axes[i].set_ylabel('True Positive Rate')
-        axes[i].set_title(f'{disease}')
-        axes[i].legend(loc='lower right')
-        axes[i].grid(alpha=0.3)
-    
-    plt.suptitle('ROC Curves for All Disease Classes', fontsize=16)
-    plt.tight_layout()
-    plt.savefig(save_dir / 'roc_curves.png', dpi=150, bbox_inches='tight')
-    plt.close()
-    
-    print(f"ROC curves saved to {save_dir}")
 
+        ax = axes[i]
+        ax.plot(fpr, tpr, 'b-', linewidth=2,
+                label=f'AUC = {roc_auc:.3f}')
+        ax.plot([0, 1], [0, 1], 'k--', linewidth=1)
+        ax.set_xlim([0.0, 1.0])
+        ax.set_ylim([0.0, 1.05])
+        ax.set_xlabel('False Positive Rate')
+        ax.set_ylabel('True Positive Rate')
+        ax.set_title(f'{disease}')
+        ax.legend(loc='lower right', fontsize=8)
+        ax.grid(alpha=0.3)
+
+    # Hide unused panels if disease_classes < 16
+    for j in range(len(disease_classes), 16):
+        axes[j].axis('off')
+
+    # Super-title for entire grid
+    plt.suptitle(f'{model_name} — ROC Curves for All Disease Classes', fontsize=18)
+
+    # ADD EXTRA SPACE to prevent overlap
+    plt.subplots_adjust(top=0.92)  # FIX: avoids overlapping with subplot titles
+
+    # Save
+    out_path = save_dir / f'{model_name}_roc_curves.png'
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+    print(f"ROC curves saved to {out_path}")
 
 if __name__ == '__main__':
     import argparse
-    
+    import json
+
     parser = argparse.ArgumentParser(description='Visualize model results')
-    parser.add_argument('--results_dir', type=str, required=True,
-                       help='Directory with evaluation results')
+    parser.add_argument('--model', type=str, required=True,
+                        help='Model name to visualize (must exist in all_models.json)')
+    parser.add_argument('--results_dir', type=str, default='./evaluation_results',
+                        help='Directory containing all_models.json and prediction files')
     parser.add_argument('--output_dir', type=str, default='./visualizations',
-                       help='Output directory for plots')
-    
+                        help='Directory to save visualizations')
+
     args = parser.parse_args()
-    
+
     results_dir = Path(args.results_dir)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
+    # Load all_models.json
+    master_json_path = results_dir / "all_models.json"
+    if not master_json_path.exists():
+        raise FileNotFoundError(f"ERROR: {master_json_path} not found")
+
+    with open(master_json_path, 'r') as f:
+        master_data = json.load(f)
+
+    model_name = args.model
+    if model_name not in master_data:
+        raise ValueError(f"Model '{model_name}' not found in all_models.json")
+
+    model_entry = master_data[model_name]
+
+    # Extract paths
+    history_path = model_entry.get("training_history_path", None)
+    pred_path = results_dir / f"{model_name}_predictions.npz"
+
     disease_classes = [
         'Atelectasis', 'Cardiomegaly', 'Effusion', 'Infiltration',
         'Mass', 'Nodule', 'Pneumonia', 'Pneumothorax',
         'Consolidation', 'Edema', 'Emphysema', 'Fibrosis',
         'Pleural_Thickening', 'Hernia'
     ]
-    
-    # Plot training history
-    history_file = results_dir.parent / 'training_history.json'
-    if history_file.exists():
-        plot_training_history(history_file, output_dir)
-    
-    # Plot confusion matrices
-    pred_file = results_dir / 'predictions.npz'
-    if pred_file.exists():
-        plot_confusion_matrices(pred_file, disease_classes, output_dir)
-        plot_roc_curves(pred_file, disease_classes, output_dir)
-    
+
+    # --- Training History ---
+    if history_path and Path(history_path).exists():
+        plot_training_history(history_path, save_dir=output_dir, model_name=model_name)
+
+    # --- Predictions ---
+    if pred_path.exists():
+        plot_confusion_matrices(pred_path, disease_classes, save_dir=output_dir, model_name=model_name)
+        plot_roc_curves(pred_path, disease_classes, save_dir=output_dir, model_name=model_name)
+
+
     print(f"\nAll visualizations saved to {output_dir}")
+
