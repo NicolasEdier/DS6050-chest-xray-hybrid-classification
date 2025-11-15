@@ -210,6 +210,54 @@ def load_checkpoint(checkpoint_path, model):
     print(f"Best AUROC: {checkpoint['best_auroc']:.4f}")
     return model
 
+def update_master_json(save_dir, model_name, metrics, optimal_thresholds, error_analysis, checkpoint_path):
+    """
+    Update a single JSON file that stores evaluation results for all models.
+
+    Structure:
+    {
+        "model_name": {
+            "metrics": {...},
+            "optimal_thresholds": [...],
+            "error_analysis": {...},
+            "checkpoint": "...",
+            "model": "model_name"
+        },
+        ...
+    }
+    """
+    master_path = Path(save_dir) / "all_models.json"
+
+    # Load existing file or start new
+    if master_path.exists():
+        with open(master_path, "r") as f:
+            master_data = json.load(f)
+    else:
+        master_data = {}
+
+    # Insert or overwrite model entry
+    master_data[model_name] = {
+        "model": model_name,
+        "checkpoint": str(checkpoint_path),
+        "metrics": {
+            "auroc_mean": float(metrics['auroc_mean']),
+            "auprc_mean": float(metrics['auprc_mean']),
+            "f1_mean": float(metrics['f1_mean']),
+            "hamming_loss": float(metrics['hamming_loss']),
+            "auroc_per_class": [float(x) for x in metrics['auroc_per_class']],
+            "auprc_per_class": [float(x) for x in metrics['auprc_per_class']],
+            "f1_per_class": [float(x) for x in metrics['f1_per_class']]
+        },
+        "optimal_thresholds": optimal_thresholds.tolist(),
+        "error_analysis": error_analysis
+    }
+
+    # Save back
+    with open(master_path, "w") as f:
+        json.dump(master_data, f, indent=2)
+
+    print(f"\nUpdated master JSON: {master_path}")
+
 
 def evaluate_model(
     checkpoint_path,
@@ -270,27 +318,17 @@ def evaluate_model(
     optimal_thresholds = evaluator.find_optimal_thresholds()
     
     # Analyze errors
-    error_analysis = evaluator.analyze_errors(predictions, model_name, save_dir=save_dir)
+    error_analysis = evaluator.analyze_errors(predictions, model_name, save_dir=None)
     
-    # Save results
-    results = {
-        'model': model_name,
-        'checkpoint': str(checkpoint_path),
-        'metrics': {
-            'auroc_mean': float(metrics['auroc_mean']),
-            'auprc_mean': float(metrics['auprc_mean']),
-            'f1_mean': float(metrics['f1_mean']),
-            'hamming_loss': float(metrics['hamming_loss']),
-            'auroc_per_class': [float(x) for x in metrics['auroc_per_class']],
-            'auprc_per_class': [float(x) for x in metrics['auprc_per_class']],
-            'f1_per_class': [float(x) for x in metrics['f1_per_class']]
-        },
-        'optimal_thresholds': optimal_thresholds.tolist()
-    }
-    
-    with open(save_dir / f'{model_name}_evaluation_results.json', 'w') as f:
-        json.dump(results, f, indent=2)
-    
+    # Update master JSON with results
+    update_master_json(
+    save_dir=save_dir,
+    model_name=model_name,
+    metrics=metrics,
+    optimal_thresholds=optimal_thresholds,
+    error_analysis=error_analysis,
+    checkpoint_path=checkpoint_path)
+        
     # Save predictions
     np.savez(
         save_dir / f"{model_name}_predictions.npz",

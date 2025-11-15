@@ -30,7 +30,9 @@ env/
 .vscode/
 .idea/
 *.swp
+dl-env/*
 
 # System
 .DS_Store
 Thumbs.db
+scratch.py
