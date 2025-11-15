@@ -213,32 +213,31 @@ def load_checkpoint(checkpoint_path, model):
 def update_master_json(save_dir, model_name, metrics, optimal_thresholds, error_analysis, checkpoint_path):
     """
     Update a single JSON file that stores evaluation results for all models.
-
-    Structure:
-    {
-        "model_name": {
-            "metrics": {...},
-            "optimal_thresholds": [...],
-            "error_analysis": {...},
-            "checkpoint": "...",
-            "model": "model_name"
-        },
-        ...
-    }
+    Instead of embedding the full training history, store its file path.
     """
+
     master_path = Path(save_dir) / "all_models.json"
 
-    # Load existing file or start new
+    # Load existing master JSON or initialize new
     if master_path.exists():
         with open(master_path, "r") as f:
             master_data = json.load(f)
     else:
         master_data = {}
 
-    # Insert or overwrite model entry
+    # Determine training_history.json path
+    # Expected: checkpoints/<model_name>/training_history.json
+    training_history_path = Path("checkpoints") / model_name / "training_history.json"
+    training_history_path_str = str(training_history_path.resolve()) if training_history_path.exists() else None
+
+    if training_history_path_str is None:
+        print(f"WARNING: No training_history.json found at {training_history_path}")
+
+    # Update model entry
     master_data[model_name] = {
         "model": model_name,
-        "checkpoint": str(checkpoint_path),
+        "checkpoint": str(Path(checkpoint_path).resolve()),
+        "training_history_path": training_history_path_str,  # ← store reference only
         "metrics": {
             "auroc_mean": float(metrics['auroc_mean']),
             "auprc_mean": float(metrics['auprc_mean']),
@@ -252,11 +251,12 @@ def update_master_json(save_dir, model_name, metrics, optimal_thresholds, error_
         "error_analysis": error_analysis
     }
 
-    # Save back
+    # Write updated master JSON
     with open(master_path, "w") as f:
         json.dump(master_data, f, indent=2)
 
     print(f"\nUpdated master JSON: {master_path}")
+
 
 
 def evaluate_model(
