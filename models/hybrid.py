@@ -113,6 +113,12 @@ class HybridA0(nn.Module):
         """Extract ViT features"""
         x = self.vit.forward_features(x)
         
+        # If output is (B, H, W, C), convert to (B, C, H, W)
+        if len(x.shape) == 4 and x.shape[1] < x.shape[3]:
+            # Swin-Tiny outputs (B, H, W, C) in some timm versions
+            x = x.permute(0, 3, 1, 2).contiguous()
+
+
         # Handle different ViT output formats
         if len(x.shape) == 3:  # (B, N, C)
             B, N, C = x.shape
@@ -120,10 +126,11 @@ class HybridA0(nn.Module):
             x = x.transpose(1, 2).reshape(B, C, H, W)
         
         # Project and resize to match CNN features
+        # Project and resize to match CNN spatial size (7×7)
         x = self.vit_proj(x)
-        if x.size(2) != 16 or x.size(3) != 16:
-            x = F.interpolate(x, size=(16, 16), mode='bilinear', align_corners=False)
-        
+        if x.size(2) != 7 or x.size(3) != 7:
+            x = F.interpolate(x, size=(7, 7), mode='bilinear', align_corners=False)
+
         return x
     
     def forward(self, x):
@@ -159,7 +166,7 @@ class HybridA3(nn.Module):
         self.layer4 = resnet.layer4
         cnn_channels = 2048
         
-        # ViT Branch
+        # ViT Branch (Swin Tiny)
         self.vit = timm.create_model(
             'swin_tiny_patch4_window7_224',
             pretrained=pretrained,
@@ -167,17 +174,17 @@ class HybridA3(nn.Module):
         )
         vit_channels = self.vit.num_features
         
+        # Project ViT → CNN channel dimension
         self.vit_proj = nn.Sequential(
             nn.Conv2d(vit_channels, cnn_channels, 1),
             nn.BatchNorm2d(cnn_channels),
             nn.ReLU(inplace=True)
         )
         
-        # Attention modules for CNN features
+        # Attention modules
         self.cnn_channel_attn = ChannelAttention(cnn_channels)
         self.cnn_spatial_attn = SpatialAttention()
         
-        # Attention modules for ViT features
         self.vit_channel_attn = ChannelAttention(cnn_channels)
         self.vit_spatial_attn = SpatialAttention()
         
@@ -202,21 +209,33 @@ class HybridA3(nn.Module):
         return x
     
     def forward_vit(self, x):
+        # Extract ViT features
         x = self.vit.forward_features(x)
+
+        # CASE 1: Swin-Tiny returns (B, H, W, C)
+        if len(x.shape) == 4 and x.shape[1] < x.shape[3]:
+            x = x.permute(0, 3, 1, 2).contiguous()  # → (B, C, H, W)
+
+        # CASE 2: Some ViTs return (B, N, C)
         if len(x.shape) == 3:
             B, N, C = x.shape
             H = W = int(N ** 0.5)
             x = x.transpose(1, 2).reshape(B, C, H, W)
+
+        # Project channels
         x = self.vit_proj(x)
-        if x.size(2) != 16 or x.size(3) != 16:
-            x = F.interpolate(x, size=(16, 16), mode='bilinear', align_corners=False)
+
+        # Resize to match CNN output: (7, 7)
+        if x.size(2) != 7 or x.size(3) != 7:
+            x = F.interpolate(x, size=(7, 7), mode='bilinear', align_corners=False)
+
         return x
     
     def forward(self, x):
         cnn_feat = self.forward_cnn(x)
         vit_feat = self.forward_vit(x)
         
-        # Apply attention to both branches
+        # Attention on both branches
         cnn_feat = self.cnn_channel_attn(cnn_feat)
         cnn_feat = self.cnn_spatial_attn(cnn_feat)
         
@@ -252,7 +271,7 @@ class HybridA4(nn.Module):
         self.layer4 = resnet.layer4
         cnn_channels = 2048
         
-        # ViT Branch
+        # ViT Branch (Swin Tiny)
         self.vit = timm.create_model(
             'swin_tiny_patch4_window7_224',
             pretrained=pretrained,
@@ -272,7 +291,7 @@ class HybridA4(nn.Module):
         self.vit_channel_attn = ChannelAttention(cnn_channels)
         self.vit_spatial_attn = SpatialAttention()
         
-        # Shared adaptive gate (learns single alpha for all diseases)
+        # Shared adaptive gate
         self.gate = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
@@ -302,35 +321,49 @@ class HybridA4(nn.Module):
         return x
     
     def forward_vit(self, x):
+        # Extract ViT features
         x = self.vit.forward_features(x)
+
+        # CASE 1: Swin returns (B, H, W, C)
+        if len(x.shape) == 4 and x.shape[1] < x.shape[3]:
+            x = x.permute(0, 3, 1, 2).contiguous()  # → (B, C, H, W)
+
+        # CASE 2: Swin returns (B, N, C) token format
         if len(x.shape) == 3:
             B, N, C = x.shape
             H = W = int(N ** 0.5)
             x = x.transpose(1, 2).reshape(B, C, H, W)
+
+        # Project to CNN channels
         x = self.vit_proj(x)
-        if x.size(2) != 16 or x.size(3) != 16:
-            x = F.interpolate(x, size=(16, 16), mode='bilinear', align_corners=False)
+
+        # Resize to match CNN spatial size (7×7)
+        if x.size(2) != 7 or x.size(3) != 7:
+            x = F.interpolate(x, size=(7, 7), mode='bilinear', align_corners=False)
+
         return x
     
     def forward(self, x):
         cnn_feat = self.forward_cnn(x)
         vit_feat = self.forward_vit(x)
         
-        # Apply attention
+        # Attention on both branches
         cnn_feat = self.cnn_channel_attn(cnn_feat)
         cnn_feat = self.cnn_spatial_attn(cnn_feat)
+        
         vit_feat = self.vit_channel_attn(vit_feat)
         vit_feat = self.vit_spatial_attn(vit_feat)
         
-        # Compute shared gate value
+        # Shared adaptive gate
         combined = torch.cat([cnn_feat, vit_feat], dim=1)
         alpha = self.gate(combined).view(-1, 1, 1, 1)
         
-        # Adaptive fusion: alpha * CNN + (1-alpha) * ViT
+        # Adaptive fusion
         fused = alpha * cnn_feat + (1 - alpha) * vit_feat
         
         logits = self.classifier(fused)
         return logits
+
 
 
 # ============================================================================
@@ -356,7 +389,7 @@ class HybridA5(nn.Module):
         self.layer4 = resnet.layer4
         cnn_channels = 2048
         
-        # ViT Branch
+        # ViT Branch (Swin Tiny)
         self.vit = timm.create_model(
             'swin_tiny_patch4_window7_224',
             pretrained=pretrained,
@@ -373,10 +406,11 @@ class HybridA5(nn.Module):
         # Attention modules
         self.cnn_channel_attn = ChannelAttention(cnn_channels)
         self.cnn_spatial_attn = SpatialAttention()
+        
         self.vit_channel_attn = ChannelAttention(cnn_channels)
         self.vit_spatial_attn = SpatialAttention()
         
-        # Per-class adaptive gates (learns alpha_i for each disease)
+        # Per-class adaptive gates
         self.disease_gates = nn.ModuleList([
             nn.Sequential(
                 nn.AdaptiveAvgPool2d(1),
@@ -410,22 +444,29 @@ class HybridA5(nn.Module):
         return x
     
     def forward_vit(self, x):
+        # Extract ViT features
         x = self.vit.forward_features(x)
+
+        # CASE 1: (B, H, W, C) → permute
+        if len(x.shape) == 4 and x.shape[1] < x.shape[3]:
+            x = x.permute(0, 3, 1, 2).contiguous()
+
+        # CASE 2: (B, N, C) → reshape
         if len(x.shape) == 3:
             B, N, C = x.shape
             H = W = int(N ** 0.5)
             x = x.transpose(1, 2).reshape(B, C, H, W)
+
+        # Project channels
         x = self.vit_proj(x)
-        if x.size(2) != 16 or x.size(3) != 16:
-            x = F.interpolate(x, size=(16, 16), mode='bilinear', align_corners=False)
+
+        # Resize to match CNN (7×7)
+        if x.size(2) != 7 or x.size(3) != 7:
+            x = F.interpolate(x, size=(7, 7), mode='bilinear', align_corners=False)
+
         return x
     
     def forward(self, x, return_gates=False):
-        """
-        Args:
-            x: Input images
-            return_gates: If True, return gate values for analysis
-        """
         cnn_feat = self.forward_cnn(x)
         vit_feat = self.forward_vit(x)
         
@@ -438,19 +479,18 @@ class HybridA5(nn.Module):
         # Concatenate for gate computation
         combined = torch.cat([cnn_feat, vit_feat], dim=1)
         
-        # Per-disease fusion and classification
         logits = []
         gate_values = []
         
         for i in range(self.num_classes):
-            # Compute disease-specific gate
+            # Per-disease gating
             alpha = self.disease_gates[i](combined).view(-1, 1, 1, 1)
             gate_values.append(alpha.squeeze().detach().cpu())
             
-            # Adaptive fusion: alpha_i * CNN + (1-alpha_i) * ViT
+            # Per-disease fused representation
             fused = alpha * cnn_feat + (1 - alpha) * vit_feat
             
-            # Disease-specific classification
+            # Per-disease classifier
             logit = self.classifiers[i](fused)
             logits.append(logit)
         
@@ -458,7 +498,9 @@ class HybridA5(nn.Module):
         
         if return_gates:
             return logits, gate_values
+        
         return logits
+
 
 
 # ============================================================================
