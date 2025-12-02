@@ -11,7 +11,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 import sys
-sys.path.append('..')
+from pathlib import Path
+
+# Make project root importable when running as a script
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
 
 from data.dataset import get_dataloaders
 from models.baseline import get_model
