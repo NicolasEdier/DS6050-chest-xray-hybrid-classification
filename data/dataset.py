@@ -4,7 +4,7 @@ PyTorch Dataset class for NIH ChestX-ray14
 
 import torch
 from torch.utils.data import Dataset
-from PIL import Image
+from PIL import Image, ImageOps
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -98,8 +98,17 @@ class ChestXrayDataset(Dataset):
                 f"  {self.image_dir}/"
             )
         
-        # Load image
-        image = Image.open(img_path).convert('RGB')
+        # Load image (strip EXIF metadata to avoid size validation issues)
+        image = Image.open(img_path)
+
+        # Fix orientation and strip EXIF cleanly
+        image = ImageOps.exif_transpose(image)
+
+        # Convert to numpy and back to PIL to remove ALL metadata
+        image = Image.fromarray(np.array(image))
+
+        # Finally convert to RGB
+        image = image.convert('RGB')
         
         # Get labels
         labels = []
@@ -156,7 +165,7 @@ def get_dataloaders(data_dir,
                    image_dir,
                    batch_size=16,
                    num_workers=4,
-                   image_size=512):
+                   image_size=224):
     """
     Create train, validation, and test dataloaders
     

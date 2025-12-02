@@ -1,12 +1,13 @@
 """
-Hybrid CNN-Transformer Architecture with Adaptive Attention Fusion
+Hybrid CNN-Transformer Architecture Variants (A0, A3, A4, A5)
+Ablation study implementations for multi-label chest X-ray classification
 """
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
-import timm  # For Vision Transformer models
+import timm
 
 
 class ChannelAttention(nn.Module):
@@ -26,12 +27,8 @@ class ChannelAttention(nn.Module):
     
     def forward(self, x):
         b, c, _, _ = x.size()
-        
-        # Average and max pooling
         avg_out = self.fc(self.avg_pool(x).view(b, c))
         max_out = self.fc(self.max_pool(x).view(b, c))
-        
-        # Combine and apply sigmoid
         out = self.sigmoid(avg_out + max_out).view(b, c, 1, 1)
         return x * out.expand_as(x)
 
@@ -45,149 +42,387 @@ class SpatialAttention(nn.Module):
         self.sigmoid = nn.Sigmoid()
     
     def forward(self, x):
-        # Average and max pooling across channels
         avg_out = torch.mean(x, dim=1, keepdim=True)
         max_out, _ = torch.max(x, dim=1, keepdim=True)
-        
-        # Concatenate and convolve
         out = torch.cat([avg_out, max_out], dim=1)
         out = self.conv(out)
         out = self.sigmoid(out)
-        
         return x * out
 
 
-class AdaptiveAttentionFusion(nn.Module):
-    """
-    Adaptive attention fusion module that combines CNN and Transformer features
-    with disease-specific gating
-    """
+# ============================================================================
+# A0: Simplified Hybrid - Concatenation Only (No Attention, No Gating)
+# ============================================================================
+
+class HybridA0(nn.Module):
+    """A0: Simplified hybrid with concatenation fusion only"""
     
-    def __init__(self, cnn_channels, vit_channels, num_classes=14):
-        super(AdaptiveAttentionFusion, self).__init__()
-        
+    def __init__(self, num_classes=14, pretrained=True, dropout=0.3):
+        super(HybridA0, self).__init__()
         self.num_classes = num_classes
         
-        # Project features to same dimension if different
-        if cnn_channels != vit_channels:
-            self.cnn_proj = nn.Conv2d(cnn_channels, vit_channels, 1)
-        else:
-            self.cnn_proj = nn.Identity()
+        # CNN Branch: ResNet-50
+        resnet = models.resnet50(pretrained=pretrained)
+        self.conv1 = resnet.conv1
+        self.bn1 = resnet.bn1
+        self.relu = resnet.relu
+        self.maxpool = resnet.maxpool
+        self.layer1 = resnet.layer1
+        self.layer2 = resnet.layer2
+        self.layer3 = resnet.layer3
+        self.layer4 = resnet.layer4
+        cnn_channels = 2048
         
-        # Channel and spatial attention for CNN features
-        self.cnn_channel_attn = ChannelAttention(vit_channels)
-        self.cnn_spatial_attn = SpatialAttention()
+        # Vision Transformer Branch: Swin Tiny
+        self.vit = timm.create_model(
+            'swin_tiny_patch4_window7_224',
+            pretrained=pretrained,
+            num_classes=0
+        )
+        vit_channels = self.vit.num_features  # 768 for swin_tiny
         
-        # Channel and spatial attention for ViT features
-        self.vit_channel_attn = ChannelAttention(vit_channels)
-        self.vit_spatial_attn = SpatialAttention()
-        
-        # Disease-specific gating: learns alpha_i for each disease
-        self.disease_gates = nn.ModuleList([
-            nn.Sequential(
-                nn.AdaptiveAvgPool2d(1),
-                nn.Flatten(),
-                nn.Linear(vit_channels * 2, 64),
-                nn.ReLU(),
-                nn.Linear(64, 1),
-                nn.Sigmoid()
-            ) for _ in range(num_classes)
-        ])
-    
-    def forward(self, cnn_feat, vit_feat):
-        """
-        Args:
-            cnn_feat: CNN features (B, C1, H, W)
-            vit_feat: ViT features (B, C2, H, W)
-        
-        Returns:
-            fused_features: List of fused features for each disease class
-        """
-        batch_size = cnn_feat.size(0)
-        
-        # Project CNN features if needed
-        cnn_feat = self.cnn_proj(cnn_feat)
-        
-        # Apply attention to both feature types
-        cnn_feat_attn = self.cnn_channel_attn(cnn_feat)
-        cnn_feat_attn = self.cnn_spatial_attn(cnn_feat_attn)
-        
-        vit_feat_attn = self.vit_channel_attn(vit_feat)
-        vit_feat_attn = self.vit_spatial_attn(vit_feat_attn)
-        
-        # Concatenate for gate computation
-        combined = torch.cat([cnn_feat_attn, vit_feat_attn], dim=1)
-        
-        # Disease-specific fusion
-        fused_features = []
-        for gate in self.disease_gates:
-            # Compute gate value (alpha) for this disease
-            alpha = gate(combined).view(batch_size, 1, 1, 1)
-            
-            # Weighted combination: alpha * CNN + (1-alpha) * ViT
-            fused = alpha * cnn_feat_attn + (1 - alpha) * vit_feat_attn
-            fused_features.append(fused)
-        
-        return fused_features
-
-
-class HybridCNNTransformer(nn.Module):
-    """
-    Hybrid CNN-Transformer architecture for multi-label chest X-ray classification
-    """
-    
-    def __init__(self, 
-                 num_classes=14,
-                 cnn_model='resnet50',
-                 vit_model='swin_tiny_patch4_window7_224',
-                 pretrained=True,
-                 dropout=0.3):
-        """
-        Args:
-            num_classes: Number of disease classes
-            cnn_model: CNN backbone ('resnet50', 'densenet121')
-            vit_model: Vision Transformer model name from timm
-            pretrained: Use pretrained weights
-            dropout: Dropout rate
-        """
-        super(HybridCNNTransformer, self).__init__()
-        
-        self.num_classes = num_classes
-        
-        # CNN Backbone (extract multi-scale features)
-        if cnn_model == 'resnet50':
-            resnet = models.resnet50(pretrained=pretrained)
-            self.conv1 = resnet.conv1
-            self.bn1 = resnet.bn1
-            self.relu = resnet.relu
-            self.maxpool = resnet.maxpool
-            self.layer1 = resnet.layer1
-            self.layer2 = resnet.layer2
-            self.layer3 = resnet.layer3
-            self.layer4 = resnet.layer4
-            cnn_channels = 2048
-        else:
-            raise NotImplementedError(f"CNN model {cnn_model} not implemented")
-        
-        # Vision Transformer Branch
-        self.vit = timm.create_model(vit_model, pretrained=pretrained, num_classes=0)
-        vit_channels = self.vit.num_features
-        
-        # Projection to match CNN feature dimensions
+        # Project ViT features to match CNN spatial size
         self.vit_proj = nn.Sequential(
             nn.Conv2d(vit_channels, cnn_channels, 1),
             nn.BatchNorm2d(cnn_channels),
             nn.ReLU(inplace=True)
         )
         
-        # Adaptive Attention Fusion
-        self.fusion = AdaptiveAttentionFusion(
-            cnn_channels=cnn_channels,
-            vit_channels=cnn_channels,
-            num_classes=num_classes
+        # Simple concatenation + classification
+        total_channels = cnn_channels * 2  # CNN + ViT
+        self.classifier = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Dropout(dropout),
+            nn.Linear(total_channels, num_classes)
+        )
+    
+    def forward_cnn(self, x):
+        """Extract CNN features"""
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)  # (B, 2048, 16, 16)
+        return x
+    
+    def forward_vit(self, x):
+        """Extract ViT features"""
+        x = self.vit.forward_features(x)
+        
+        # If output is (B, H, W, C), convert to (B, C, H, W)
+        if len(x.shape) == 4 and x.shape[1] < x.shape[3]:
+            # Swin-Tiny outputs (B, H, W, C) in some timm versions
+            x = x.permute(0, 3, 1, 2).contiguous()
+
+
+        # Handle different ViT output formats
+        if len(x.shape) == 3:  # (B, N, C)
+            B, N, C = x.shape
+            H = W = int(N ** 0.5)
+            x = x.transpose(1, 2).reshape(B, C, H, W)
+        
+        # Project and resize to match CNN features
+        # Project and resize to match CNN spatial size (7×7)
+        x = self.vit_proj(x)
+        if x.size(2) != 7 or x.size(3) != 7:
+            x = F.interpolate(x, size=(7, 7), mode='bilinear', align_corners=False)
+
+        return x
+    
+    def forward(self, x):
+        cnn_feat = self.forward_cnn(x)
+        vit_feat = self.forward_vit(x)
+        
+        # Simple concatenation
+        combined = torch.cat([cnn_feat, vit_feat], dim=1)
+        logits = self.classifier(combined)
+        return logits
+
+
+# ============================================================================
+# A3: + Channel and Spatial Attention
+# ============================================================================
+
+class HybridA3(nn.Module):
+    """A3: Concatenation + Channel + Spatial Attention"""
+    
+    def __init__(self, num_classes=14, pretrained=True, dropout=0.3):
+        super(HybridA3, self).__init__()
+        self.num_classes = num_classes
+        
+        # CNN Branch
+        resnet = models.resnet50(pretrained=pretrained)
+        self.conv1 = resnet.conv1
+        self.bn1 = resnet.bn1
+        self.relu = resnet.relu
+        self.maxpool = resnet.maxpool
+        self.layer1 = resnet.layer1
+        self.layer2 = resnet.layer2
+        self.layer3 = resnet.layer3
+        self.layer4 = resnet.layer4
+        cnn_channels = 2048
+        
+        # ViT Branch (Swin Tiny)
+        self.vit = timm.create_model(
+            'swin_tiny_patch4_window7_224',
+            pretrained=pretrained,
+            num_classes=0
+        )
+        vit_channels = self.vit.num_features
+        
+        # Project ViT → CNN channel dimension
+        self.vit_proj = nn.Sequential(
+            nn.Conv2d(vit_channels, cnn_channels, 1),
+            nn.BatchNorm2d(cnn_channels),
+            nn.ReLU(inplace=True)
         )
         
-        # Disease-specific classification heads
+        # Attention modules
+        self.cnn_channel_attn = ChannelAttention(cnn_channels)
+        self.cnn_spatial_attn = SpatialAttention()
+        
+        self.vit_channel_attn = ChannelAttention(cnn_channels)
+        self.vit_spatial_attn = SpatialAttention()
+        
+        # Classifier
+        total_channels = cnn_channels * 2
+        self.classifier = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Dropout(dropout),
+            nn.Linear(total_channels, num_classes)
+        )
+    
+    def forward_cnn(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        return x
+    
+    def forward_vit(self, x):
+        # Extract ViT features
+        x = self.vit.forward_features(x)
+
+        # CASE 1: Swin-Tiny returns (B, H, W, C)
+        if len(x.shape) == 4 and x.shape[1] < x.shape[3]:
+            x = x.permute(0, 3, 1, 2).contiguous()  # → (B, C, H, W)
+
+        # CASE 2: Some ViTs return (B, N, C)
+        if len(x.shape) == 3:
+            B, N, C = x.shape
+            H = W = int(N ** 0.5)
+            x = x.transpose(1, 2).reshape(B, C, H, W)
+
+        # Project channels
+        x = self.vit_proj(x)
+
+        # Resize to match CNN output: (7, 7)
+        if x.size(2) != 7 or x.size(3) != 7:
+            x = F.interpolate(x, size=(7, 7), mode='bilinear', align_corners=False)
+
+        return x
+    
+    def forward(self, x):
+        cnn_feat = self.forward_cnn(x)
+        vit_feat = self.forward_vit(x)
+        
+        # Attention on both branches
+        cnn_feat = self.cnn_channel_attn(cnn_feat)
+        cnn_feat = self.cnn_spatial_attn(cnn_feat)
+        
+        vit_feat = self.vit_channel_attn(vit_feat)
+        vit_feat = self.vit_spatial_attn(vit_feat)
+        
+        # Concatenate
+        combined = torch.cat([cnn_feat, vit_feat], dim=1)
+        logits = self.classifier(combined)
+        return logits
+
+
+# ============================================================================
+# A4: + Shared Adaptive Gate
+# ============================================================================
+
+class HybridA4(nn.Module):
+    """A4: Attention + Shared Adaptive Gate"""
+    
+    def __init__(self, num_classes=14, pretrained=True, dropout=0.3):
+        super(HybridA4, self).__init__()
+        self.num_classes = num_classes
+        
+        # CNN Branch
+        resnet = models.resnet50(pretrained=pretrained)
+        self.conv1 = resnet.conv1
+        self.bn1 = resnet.bn1
+        self.relu = resnet.relu
+        self.maxpool = resnet.maxpool
+        self.layer1 = resnet.layer1
+        self.layer2 = resnet.layer2
+        self.layer3 = resnet.layer3
+        self.layer4 = resnet.layer4
+        cnn_channels = 2048
+        
+        # ViT Branch (Swin Tiny)
+        self.vit = timm.create_model(
+            'swin_tiny_patch4_window7_224',
+            pretrained=pretrained,
+            num_classes=0
+        )
+        vit_channels = self.vit.num_features
+        
+        self.vit_proj = nn.Sequential(
+            nn.Conv2d(vit_channels, cnn_channels, 1),
+            nn.BatchNorm2d(cnn_channels),
+            nn.ReLU(inplace=True)
+        )
+        
+        # Attention modules
+        self.cnn_channel_attn = ChannelAttention(cnn_channels)
+        self.cnn_spatial_attn = SpatialAttention()
+        self.vit_channel_attn = ChannelAttention(cnn_channels)
+        self.vit_spatial_attn = SpatialAttention()
+        
+        # Shared adaptive gate
+        self.gate = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(cnn_channels * 2, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
+            nn.Sigmoid()
+        )
+        
+        # Classifier
+        self.classifier = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Dropout(dropout),
+            nn.Linear(cnn_channels, num_classes)
+        )
+    
+    def forward_cnn(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        return x
+    
+    def forward_vit(self, x):
+        # Extract ViT features
+        x = self.vit.forward_features(x)
+
+        # CASE 1: Swin returns (B, H, W, C)
+        if len(x.shape) == 4 and x.shape[1] < x.shape[3]:
+            x = x.permute(0, 3, 1, 2).contiguous()  # → (B, C, H, W)
+
+        # CASE 2: Swin returns (B, N, C) token format
+        if len(x.shape) == 3:
+            B, N, C = x.shape
+            H = W = int(N ** 0.5)
+            x = x.transpose(1, 2).reshape(B, C, H, W)
+
+        # Project to CNN channels
+        x = self.vit_proj(x)
+
+        # Resize to match CNN spatial size (7×7)
+        if x.size(2) != 7 or x.size(3) != 7:
+            x = F.interpolate(x, size=(7, 7), mode='bilinear', align_corners=False)
+
+        return x
+    
+    def forward(self, x):
+        cnn_feat = self.forward_cnn(x)
+        vit_feat = self.forward_vit(x)
+        
+        # Attention on both branches
+        cnn_feat = self.cnn_channel_attn(cnn_feat)
+        cnn_feat = self.cnn_spatial_attn(cnn_feat)
+        
+        vit_feat = self.vit_channel_attn(vit_feat)
+        vit_feat = self.vit_spatial_attn(vit_feat)
+        
+        # Shared adaptive gate
+        combined = torch.cat([cnn_feat, vit_feat], dim=1)
+        alpha = self.gate(combined).view(-1, 1, 1, 1)
+        
+        # Adaptive fusion
+        fused = alpha * cnn_feat + (1 - alpha) * vit_feat
+        
+        logits = self.classifier(fused)
+        return logits
+
+
+
+# ============================================================================
+# A5: + Per-Class Adaptive Gates (Full Model)
+# ============================================================================
+
+class HybridA5(nn.Module):
+    """A5: Attention + Per-Class Adaptive Gates (Full Hybrid Model)"""
+    
+    def __init__(self, num_classes=14, pretrained=True, dropout=0.3):
+        super(HybridA5, self).__init__()
+        self.num_classes = num_classes
+        
+        # CNN Branch
+        resnet = models.resnet50(pretrained=pretrained)
+        self.conv1 = resnet.conv1
+        self.bn1 = resnet.bn1
+        self.relu = resnet.relu
+        self.maxpool = resnet.maxpool
+        self.layer1 = resnet.layer1
+        self.layer2 = resnet.layer2
+        self.layer3 = resnet.layer3
+        self.layer4 = resnet.layer4
+        cnn_channels = 2048
+        
+        # ViT Branch (Swin Tiny)
+        self.vit = timm.create_model(
+            'swin_tiny_patch4_window7_224',
+            pretrained=pretrained,
+            num_classes=0
+        )
+        vit_channels = self.vit.num_features
+        
+        self.vit_proj = nn.Sequential(
+            nn.Conv2d(vit_channels, cnn_channels, 1),
+            nn.BatchNorm2d(cnn_channels),
+            nn.ReLU(inplace=True)
+        )
+        
+        # Attention modules
+        self.cnn_channel_attn = ChannelAttention(cnn_channels)
+        self.cnn_spatial_attn = SpatialAttention()
+        
+        self.vit_channel_attn = ChannelAttention(cnn_channels)
+        self.vit_spatial_attn = SpatialAttention()
+        
+        # Per-class adaptive gates
+        self.disease_gates = nn.ModuleList([
+            nn.Sequential(
+                nn.AdaptiveAvgPool2d(1),
+                nn.Flatten(),
+                nn.Linear(cnn_channels * 2, 64),
+                nn.ReLU(),
+                nn.Linear(64, 1),
+                nn.Sigmoid()
+            ) for _ in range(num_classes)
+        ])
+        
+        # Per-class classifiers
         self.classifiers = nn.ModuleList([
             nn.Sequential(
                 nn.AdaptiveAvgPool2d(1),
@@ -198,135 +433,86 @@ class HybridCNNTransformer(nn.Module):
         ])
     
     def forward_cnn(self, x):
-        """Extract CNN features"""
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
-        
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
-        x = self.layer4(x)  # Shape: (B, 2048, 16, 16) for 512x512 input
-        
+        x = self.layer4(x)
         return x
     
     def forward_vit(self, x):
-        """Extract ViT features and reshape to spatial format"""
-        # ViT forward
+        # Extract ViT features
         x = self.vit.forward_features(x)
-        
-        # Reshape from (B, N, C) to (B, C, H, W)
-        # For Swin Transformer, output is already spatial
-        if len(x.shape) == 3:  # (B, N, C) format
+
+        # CASE 1: (B, H, W, C) → permute
+        if len(x.shape) == 4 and x.shape[1] < x.shape[3]:
+            x = x.permute(0, 3, 1, 2).contiguous()
+
+        # CASE 2: (B, N, C) → reshape
+        if len(x.shape) == 3:
             B, N, C = x.shape
             H = W = int(N ** 0.5)
             x = x.transpose(1, 2).reshape(B, C, H, W)
-        
-        # Project to CNN feature dimension
+
+        # Project channels
         x = self.vit_proj(x)
-        
-        # Upsample to match CNN feature size if needed
-        # CNN features are 16x16, so we may need to upsample ViT features
-        if x.size(2) != 16 or x.size(3) != 16:
-            x = F.interpolate(x, size=(16, 16), mode='bilinear', align_corners=False)
-        
+
+        # Resize to match CNN (7×7)
+        if x.size(2) != 7 or x.size(3) != 7:
+            x = F.interpolate(x, size=(7, 7), mode='bilinear', align_corners=False)
+
         return x
     
-    def forward(self, x):
-        """
-        Args:
-            x: Input images (B, 3, H, W)
-        
-        Returns:
-            logits: Tensor of shape (B, num_classes)
-        """
-        # Extract features from both branches
+    def forward(self, x, return_gates=False):
         cnn_feat = self.forward_cnn(x)
         vit_feat = self.forward_vit(x)
         
-        # Adaptive fusion for each disease
-        fused_features = self.fusion(cnn_feat, vit_feat)
+        # Apply attention
+        cnn_feat = self.cnn_channel_attn(cnn_feat)
+        cnn_feat = self.cnn_spatial_attn(cnn_feat)
+        vit_feat = self.vit_channel_attn(vit_feat)
+        vit_feat = self.vit_spatial_attn(vit_feat)
         
-        # Disease-specific classification
-        logits = []
-        for i, classifier in enumerate(self.classifiers):
-            logit = classifier(fused_features[i])
-            logits.append(logit)
-        
-        logits = torch.cat(logits, dim=1)  # (B, num_classes)
-        
-        return logits
-
-
-class SimplifiedHybrid(nn.Module):
-    """Simplified hybrid model with concatenation fusion (ablation baseline)"""
-    
-    def __init__(self, 
-                 num_classes=14,
-                 cnn_model='resnet50',
-                 vit_model='swin_tiny_patch4_window7_224',
-                 pretrained=True,
-                 dropout=0.3):
-        super(SimplifiedHybrid, self).__init__()
-        
-        self.num_classes = num_classes
-        
-        # CNN Backbone
-        resnet = models.resnet50(pretrained=pretrained)
-        self.cnn = nn.Sequential(*list(resnet.children())[:-2])  # Remove avgpool and fc
-        cnn_channels = 2048
-        
-        # Vision Transformer
-        self.vit = timm.create_model(vit_model, pretrained=pretrained, num_classes=0)
-        vit_channels = self.vit.num_features
-        
-        # Simple concatenation fusion
-        total_channels = cnn_channels + vit_channels
-        
-        # Classification head
-        self.classifier = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Flatten(),
-            nn.Dropout(dropout),
-            nn.Linear(total_channels, num_classes)
-        )
-    
-    def forward(self, x):
-        # CNN features
-        cnn_feat = self.cnn(x)
-        
-        # ViT features
-        vit_feat = self.vit.forward_features(x)
-        if len(vit_feat.shape) == 3:
-            B, N, C = vit_feat.shape
-            H = W = int(N ** 0.5)
-            vit_feat = vit_feat.transpose(1, 2).reshape(B, C, H, W)
-        
-        # Resize ViT features to match CNN
-        if vit_feat.size(2) != cnn_feat.size(2):
-            vit_feat = F.interpolate(
-                vit_feat, 
-                size=(cnn_feat.size(2), cnn_feat.size(3)),
-                mode='bilinear',
-                align_corners=False
-            )
-        
-        # Concatenate
+        # Concatenate for gate computation
         combined = torch.cat([cnn_feat, vit_feat], dim=1)
         
-        # Classify
-        logits = self.classifier(combined)
+        logits = []
+        gate_values = []
+        
+        for i in range(self.num_classes):
+            # Per-disease gating
+            alpha = self.disease_gates[i](combined).view(-1, 1, 1, 1)
+            gate_values.append(alpha.squeeze().detach().cpu())
+            
+            # Per-disease fused representation
+            fused = alpha * cnn_feat + (1 - alpha) * vit_feat
+            
+            # Per-disease classifier
+            logit = self.classifiers[i](fused)
+            logits.append(logit)
+        
+        logits = torch.cat(logits, dim=1)
+        
+        if return_gates:
+            return logits, gate_values
         
         return logits
 
 
-def get_hybrid_model(model_type='full', num_classes=14, pretrained=True, dropout=0.3):
+
+# ============================================================================
+# Factory Function
+# ============================================================================
+
+def get_hybrid_model(variant='A0', num_classes=14, pretrained=True, dropout=0.3):
     """
-    Factory function for hybrid models
+    Factory function to get hybrid model variants
     
     Args:
-        model_type: 'full' (with adaptive attention) or 'simple' (concatenation only)
+        variant: 'A0', 'A3', 'A4', 'A5' or 'a0', 'a3', 'a4', 'a5' (case-insensitive)
         num_classes: Number of disease classes
         pretrained: Use pretrained weights
         dropout: Dropout rate
@@ -334,35 +520,42 @@ def get_hybrid_model(model_type='full', num_classes=14, pretrained=True, dropout
     Returns:
         Model instance
     """
-    if model_type == 'full':
-        return HybridCNNTransformer(
-            num_classes=num_classes,
-            pretrained=pretrained,
-            dropout=dropout
-        )
-    elif model_type == 'simple':
-        return SimplifiedHybrid(
-            num_classes=num_classes,
-            pretrained=pretrained,
-            dropout=dropout
-        )
+    # Handle both uppercase and lowercase, and with/without 'hybrid_' prefix
+    variant = str(variant).upper().replace('HYBRID_', '')
+    
+    if variant == 'A0':
+        return HybridA0(num_classes, pretrained, dropout)
+    elif variant == 'A3':
+        return HybridA3(num_classes, pretrained, dropout)
+    elif variant == 'A4':
+        return HybridA4(num_classes, pretrained, dropout)
+    elif variant == 'A5':
+        return HybridA5(num_classes, pretrained, dropout)
     else:
-        raise ValueError(f"Unknown model type: {model_type}")
+        raise ValueError(f"Unknown variant: {variant}. Choose from 'A0', 'A3', 'A4', 'A5'")
+
+
+def count_parameters(model):
+    """Count trainable parameters"""
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
 if __name__ == '__main__':
-    # Test hybrid model
+    # Test all variants
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    print("Testing Full Hybrid Model:")
-    model = get_hybrid_model('full', num_classes=14)
-    model = model.to(device)
-    
     x = torch.randn(2, 3, 512, 512).to(device)
-    out = model(x)
     
-    print(f"  Input shape: {x.shape}")
-    print(f"  Output shape: {out.shape}")
-    
-    total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"  Total parameters: {total_params:,}")
+    for variant in ['A0', 'A3', 'A4', 'A5']:
+        print(f"\nTesting {variant}:")
+        model = get_hybrid_model(variant, num_classes=14)
+        model = model.to(device)
+        
+        if variant == 'A5':
+            out, gates = model(x, return_gates=True)
+            print(f"  Gate values shape: {len(gates)} diseases")
+        else:
+            out = model(x)
+        
+        print(f"  Input: {x.shape}")
+        print(f"  Output: {out.shape}")
+        print(f"  Parameters: {count_parameters(model):,}")

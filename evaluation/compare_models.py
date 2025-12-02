@@ -20,6 +20,21 @@ output_csv_path = output_dir / "model_summary.csv"
 with open(master_json_path, "r") as f:
     data = json.load(f)
 
+# ------------------------------------------------------------
+# Filter models to only the ones we want to compare
+# ------------------------------------------------------------
+models_to_compare = [
+    "resnet50",
+    "hybrid_a0",
+    "hybrid_a3",
+    "hybrid_a4",
+    "hybrid_a5",
+]
+
+data = {name: info for name, info in data.items() if name in models_to_compare}
+print("Comparing models:", list(data.keys()))
+
+
 rows = []
 
 for model_name, info in data.items():
