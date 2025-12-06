@@ -51,7 +51,7 @@ dataset:
 # Training
 training:
   # Model selection
-  model_name: 'resnet50'  # Options: resnet50, densenet121, hybrid_full, hybrid_simple
+  model_name: 'resnet50'  # Options: resnet50, densenet121
   
   # Hyperparameters
   batch_size: 16

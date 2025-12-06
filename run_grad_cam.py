@@ -7,10 +7,6 @@ import cv2
 from models.hybrid import get_hybrid_model
 from data.dataset import get_dataloaders
 
-# ------------------------------------------------------------
-# CONFIGURATION
-# ------------------------------------------------------------
-
 MODEL_NAME = "hybrid_a5"
 CHECKPOINT_PATH = "checkpoints/hybrid_a5/best_model.pth"   # <-- update if needed
 OUTPUT_DIR = Path("visualizations/gradcam_hybrid_a5")
@@ -26,10 +22,6 @@ DISEASE_CLASSES = [
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
-# ------------------------------------------------------------
-# HELPER CLASS (Grad-CAM)
-# ------------------------------------------------------------
 class GradCAM:
     def __init__(self, model, target_layer):
         self.model = model
@@ -78,10 +70,6 @@ def overlay_heatmap(image, heatmap, alpha=0.4):
     blended = (1 - alpha) * image + alpha * heatmap_color
     return blended.astype(np.uint8)
 
-
-# ------------------------------------------------------------
-# MAIN GRAD-CAM EXECUTION
-# ------------------------------------------------------------
 def run_gradcam():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -177,7 +165,6 @@ def run_gradcam():
             shown += 1
 
     print("Done.")
-
 
 if __name__ == "__main__":
     run_gradcam()

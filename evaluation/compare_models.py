@@ -14,15 +14,9 @@ output_dir.mkdir(parents=True, exist_ok=True)
 
 output_csv_path = output_dir / "model_summary.csv"
 
-# ------------------------------------------------------------
-# Load master JSON
-# ------------------------------------------------------------
 with open(master_json_path, "r") as f:
     data = json.load(f)
 
-# ------------------------------------------------------------
-# Filter models to only the ones we want to compare
-# ------------------------------------------------------------
 models_to_compare = [
     "resnet50",
     "hybrid_a0",
@@ -205,9 +199,7 @@ def plot_disease_confusion_bars(all_models_data, output_dir):
     models = list(all_models_data.keys())
     num_diseases = len(diseases)
 
-    # ------------------------------------------------------------
     # Compute global max across all FP/FN/TP for all diseases/models
-    # ------------------------------------------------------------
     global_max = 0
     for model in models:
         for disease in diseases:
@@ -218,9 +210,7 @@ def plot_disease_confusion_bars(all_models_data, output_dir):
     # Add a small buffer so bars don’t hit the top
     global_max = int(global_max * 1.10)
 
-    # ------------------------------------------------------------
     # Create subplots
-    # ------------------------------------------------------------
     fig, axes = plt.subplots(7, 2, figsize=(18, 28))
     axes = axes.flatten()
 
@@ -262,8 +252,6 @@ def plot_disease_confusion_bars(all_models_data, output_dir):
     plt.close()
 
     print("Saved disease confusion bar plot grid (shared y-axis).")
-
-
 
 plot_loss_curves(data, output_dir)
 plot_auroc_curves(data, output_dir)
