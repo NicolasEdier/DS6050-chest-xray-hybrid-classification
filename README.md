@@ -66,19 +66,25 @@ chest-xray-hybrid/
 ├── models/
 │   ├── baseline.py            # ResNet-50 and DenseNet-121 baselines
 │   ├── hybrid.py              # Hybrid CNN-Transformer architecture
-│   └── attention.py           # Attention mechanism modules
 ├── training/
-│   ├── train.py               # Training script
+│   ├── train.py               # Training script for baseline models
+│   ├── train_hybrid.py        # Training script for hybrid models
 │   ├── losses.py              # Loss functions (BCE, Focal, Correlation-aware)
 │   └── metrics.py             # Evaluation metrics
 ├── evaluation/
 │   ├── evaluate.py            # Model evaluation script
 │   └── visualize.py           # Visualization utilities
+│   └── compare_models.py      # Visualize and compare multiple models
 ├── configs/
-│   └── config.yaml            # Configuration files
-├── checkpoints/               # Saved model checkpoints
-├── results/                   # Evaluation results and plots
-├── requirements.txt
+│   └── config.yaml            # Configuration file
+├── visualizations/            # Figures and plots
+├── verify_setup.py            # Verify installation and project structure before training
+├── run_experiment.py          # Run experiment comparing baseline models
+├── run_grad_cam.py            # Produce GradCam visuals
+├── run_hybrid_experiments.py  # Train and evaluate all hybrid model variants
+├── run_single_hybrid_model.py # Train and evaluate specified hybrid variant
+├── colab_experiment.ipynb     # Setup an experiment in Google Colab
+├── requirements.txt            
 └── README.md
 ```
 
